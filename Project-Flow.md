@@ -1,60 +1,64 @@
-ProjectFlow - Development Documentation
-Personal Project Management Tool
-Version: 1.0.0
-Target: Local Hosting with Minimal/Monochrome UI
-Table of Contents
-Project Overview
-Technical Architecture
-UI/UX Design Guidelines
-Database Schema
-API Specification
-Frontend Implementation
-Backend Implementation
-Development Setup
-Feature Specifications
-Deployment Guide
-Performance Considerations
-Security Guidelines
-Project Overview
-Project Description
-ProjectFlow is a personal project management tool designed for local hosting. It provides comprehensive project tracking, task management, Kanban boards, analytics, and reporting capabilities with a focus on individual productivity.
-Key Features
-Dashboard: Overview with statistics and recent activity
-Kanban Board: Visual task management with drag-and-drop
-Project Management: Project creation, tracking, and progress monitoring
-Task Management: Task creation, assignment, prioritization
-Analytics: Productivity insights and performance metrics
-Calendar: Deadline tracking and event management
-Reports: Custom report generation and export
-Settings: User preferences and configuration
-Design Philosophy
-Minimal: Clean, uncluttered interface focusing on content
-Monochrome: Primarily grayscale with selective accent colors
-Local-First: Designed for local hosting and offline capability
-Performance: Fast, lightweight, and responsive
-Technical Architecture
-Stack Recommendation
-Backend
+# ProjectFlow - Development Documentation
+- Personal Project Management Tool
+- Version: 1.0.0
+- Target: Local Hosting with Minimal/Monochrome UI
 
-Node.js with Express.js
-SQLite for local database
-Opaque tokens for authentication (with optional HTTP-only cookie support)
-Multer for file uploads
-date-fns for date handling
-Frontend
-Vanilla JavaScript (ES6+) or React.js
-CSS3 with CSS Grid and Flexbox
-HTML5 Drag and Drop API
-Chart.js for analytics
-Local Storage for settings
-Development Tools
-Vite or Webpack for bundling
-ESLint for code quality
-Prettier for formatting
-Jest for testing
-Architecture Patterns
-MVC Structure
-src/
+## Table of Contents
+1. Project Overview
+2. Technical Architecture
+3. UI/UX Design Guidelines
+4. Database Schema
+5. API Specification
+6. Frontend Implementation
+7. Backend Implementation
+8. Development Setup
+9. Feature Specifications
+10. Deployment Guide
+11. Performance Considerations
+12. Security Guidelines
+
+## Project Overview
+### Project Description
+ProjectFlow is a personal project management tool designed for local hosting. It provides comprehensive project tracking, task management, Kanban boards, analytics, and reporting capabilities with a focus on individual productivity.
+
+### Key Features
+- Dashboard: Overview with statistics and recent activity
+- Kanban Board: Visual task management with drag-and-drop
+- Project Management: Project creation, tracking, and progress monitoring
+- Task Management: Task creation, assignment, prioritization
+- Analytics: Productivity insights and performance metrics
+- Calendar: Deadline tracking and event management
+- Reports: Custom report generation and export
+- Settings: User preferences and configuration
+
+### Design Philosophy
+- Minimal: Clean, uncluttered interface focusing on content
+- Monochrome: Primarily grayscale with selective accent colors
+- Local-First: Designed for local hosting and offline capability
+- Performance: Fast, lightweight, and responsive
+
+## Technical Architecture
+### Stack Recommendation
+#### Backend
+- Node.js with Express.js
+- SQLite for local database
+- Opaque tokens for authentication (with optional HTTP-only cookie support)
+- Multer for file uploads
+- date-fns for date handling Frontend
+- Vanilla JavaScript (ES6+) or React.js
+- CSS3 with CSS Grid and Flexbox
+- HTML5 Drag and Drop API
+- Chart.js for analytics
+- Local Storage for settings
+- Development Tools
+- Vite or Webpack for bundling
+- ESLint for code quality
+- Prettier for formatting
+- Jest for testing
+
+### Architecture Patterns
+#### MVC Structure
+<pre>src/
 ├── models/           # Data models and database interactions
 ├── views/            # Frontend components and pages
 ├── controllers/      # Business logic and API handlers
@@ -62,15 +66,16 @@ src/
 ├── middleware/       # Custom middleware
 ├── utils/            # Helper functions
 ├── public/           # Static assets
-└── config/           # Configuration files
-Database-First Approach
+└── config/           # Configuration files</pre>
 
-SQLite for simplicity and portability
-Migration system for schema updates
-Data validation at model level
-Automatic backups
-UI/UX Design Guidelines
-Color Palette (Monochrome + Accent)
+#### Database-First Approach
+- SQLite for simplicity and portability
+- Migration system for schema updates
+- Data validation at model level
+- Automatic backups
+- UI/UX Design Guidelines
+- Color Palette (Monochrome + Accent)
+
 Primary Colors
 css:root {
   /* Monochrome Base */
