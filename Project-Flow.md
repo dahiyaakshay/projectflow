@@ -2,9 +2,7 @@ ProjectFlow - Development Documentation
 Personal Project Management Tool
 Version: 1.0.0
 Target: Local Hosting with Minimal/Monochrome UI
-
 Table of Contents
-
 Project Overview
 Technical Architecture
 UI/UX Design Guidelines
@@ -17,13 +15,10 @@ Feature Specifications
 Deployment Guide
 Performance Considerations
 Security Guidelines
-
-
 Project Overview
 Project Description
 ProjectFlow is a personal project management tool designed for local hosting. It provides comprehensive project tracking, task management, Kanban boards, analytics, and reporting capabilities with a focus on individual productivity.
 Key Features
-
 Dashboard: Overview with statistics and recent activity
 Kanban Board: Visual task management with drag-and-drop
 Project Management: Project creation, tracking, and progress monitoring
@@ -32,34 +27,31 @@ Analytics: Productivity insights and performance metrics
 Calendar: Deadline tracking and event management
 Reports: Custom report generation and export
 Settings: User preferences and configuration
-
 Design Philosophy
-
 Minimal: Clean, uncluttered interface focusing on content
 Monochrome: Primarily grayscale with selective accent colors
 Local-First: Designed for local hosting and offline capability
 Performance: Fast, lightweight, and responsive
-
-
 Technical Architecture
 Stack Recommendation
 Backend
-- Node.js with Express.js
-- SQLite for local database
-- JWT for authentication (if needed)
-- Multer for file uploads
-- date-fns for date handling
+
+Node.js with Express.js
+SQLite for local database
+Opaque tokens for authentication (with optional HTTP-only cookie support)
+Multer for file uploads
+date-fns for date handling
 Frontend
-- Vanilla JavaScript (ES6+) or React.js
-- CSS3 with CSS Grid and Flexbox
-- HTML5 Drag and Drop API
-- Chart.js for analytics
-- Local Storage for settings
+Vanilla JavaScript (ES6+) or React.js
+CSS3 with CSS Grid and Flexbox
+HTML5 Drag and Drop API
+Chart.js for analytics
+Local Storage for settings
 Development Tools
-- Vite or Webpack for bundling
-- ESLint for code quality
-- Prettier for formatting
-- Jest for testing
+Vite or Webpack for bundling
+ESLint for code quality
+Prettier for formatting
+Jest for testing
 Architecture Patterns
 MVC Structure
 src/
@@ -77,8 +69,6 @@ SQLite for simplicity and portability
 Migration system for schema updates
 Data validation at model level
 Automatic backups
-
-
 UI/UX Design Guidelines
 Color Palette (Monochrome + Accent)
 Primary Colors
@@ -148,22 +138,17 @@ css:root {
 }
 Component Design Principles
 Minimalism Guidelines
-
 White Space: Generous use of white space for visual breathing room
 Typography Hierarchy: Clear hierarchy using font weights and sizes
 Reduced Visual Elements: Minimal use of borders, shadows, and decorative elements
 Functional Color: Color used primarily for functional purposes (status, actions)
 Clean Lines: Straight lines, minimal curves, geometric shapes
-
 Interaction Patterns
-
 Subtle Hover Effects: Light background changes or opacity shifts
 Micro-animations: Short, purposeful transitions (200-300ms)
 Focus States: Clear keyboard navigation indicators
 Loading States: Simple loading indicators without spinners
 Error Handling: Inline, contextual error messages
-
-
 Database Schema
 Tables Structure
 Users Table
@@ -177,6 +162,18 @@ sqlCREATE TABLE users (
   preferences TEXT, -- JSON string
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+Sessions Table
+sqlCREATE TABLE sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token VARCHAR(255) UNIQUE NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  user_agent TEXT,
+  ip_address VARCHAR(45),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 Projects Table
 sqlCREATE TABLE projects (
@@ -269,7 +266,9 @@ CREATE INDEX idx_projects_user_id ON projects(user_id);
 CREATE INDEX idx_projects_status ON projects(status);
 CREATE INDEX idx_time_logs_task_id ON time_logs(task_id);
 CREATE INDEX idx_time_logs_logged_date ON time_logs(logged_date);
-
+CREATE INDEX idx_sessions_token ON sessions(token);
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 API Specification
 Authentication Endpoints
 POST /api/auth/login
@@ -282,7 +281,36 @@ javascript// Request
 // Response
 {
   "success": true,
-  "token": "jwt_token",
+  "token": "opaque_session_token",
+  "user": {
+    "id": 1,
+    "username": "string",
+    "email": "string",
+    "full_name": "string"
+  }
+}
+POST /api/auth/logout
+javascript// Request (token in Authorization header or cookie)
+// No body required
+
+// Response
+{
+  "success": true,
+  "message": "Logged out successfully"
+}
+
+// Logout Flow:
+// 1. Extract token from Authorization header or secure cookie
+// 2. Delete token record from sessions table
+// 3. Clear HTTP-only cookie if used
+// 4. Return success response
+GET /api/auth/me
+javascript// Request (token in Authorization header)
+// No body required
+
+// Response
+{
+  "success": true,
   "user": {
     "id": 1,
     "username": "string",
@@ -455,7 +483,6 @@ javascript// Response
     ]
   }
 }
-
 Frontend Implementation
 Component Structure
 Core Components
@@ -620,9 +647,13 @@ export class KanbanBoard {
   
   async updateTaskStatus(taskId, status) {
     try {
+      const token = localStorage.getItem('authToken');
       const response = await fetch(`/api/tasks/${taskId}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ status })
       });
       
@@ -637,11 +668,16 @@ export class KanbanBoard {
   
   async loadTasks(projectId = null) {
     try {
+      const token = localStorage.getItem('authToken');
       const url = projectId 
         ? `/api/tasks?project_id=${projectId}` 
         : '/api/tasks';
         
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       const result = await response.json();
       
       if (result.success) {
@@ -1162,13 +1198,13 @@ css/* styles/components.css */
   color: var(--color-gray-600);
   background-color: var(--color-gray-50);
 }
-
 Backend Implementation
 Server Setup (Node.js/Express)
 Main Server File
 javascript// server.js
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Database } from './src/config/database.js';
@@ -1193,6 +1229,7 @@ await db.initialize();
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser()); // Enable cookie parsing for HTTP-only cookies
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes
@@ -1290,6 +1327,321 @@ export class Database {
       await this.db.close();
     }
   }
+}
+Authentication Controller
+javascript// src/controllers/authController.js
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
+import { UserModel } from '../models/User.js';
+import { SessionModel } from '../models/Session.js';
+
+export class AuthController {
+  constructor() {
+    this.userModel = new UserModel();
+    this.sessionModel = new SessionModel();
+  }
+  
+  async login(req, res, next) {
+    try {
+      const { username, password } = req.body;
+      
+      if (!username || !password) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username and password are required'
+        });
+      }
+      
+      // Find user
+      const user = await this.userModel.findByUsername(username);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+      
+      // Verify password
+      const isValidPassword = await bcrypt.compare(password, user.password_hash);
+      if (!isValidPassword) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+      
+      // Create session token
+      const token = uuidv4();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+      
+      await this.sessionModel.create({
+        user_id: user.id,
+        token,
+        expires_at: expiresAt.toISOString(),
+        user_agent: req.headers['user-agent'] || '',
+        ip_address: req.ip || req.connection.remoteAddress
+      });
+      
+      // Clean up old sessions for this user
+      await this.sessionModel.cleanupUserSessions(user.id);
+      
+      res.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          full_name: user.full_name
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+  
+  async logout(req, res, next) {
+    try {
+      const token = req.token;
+      
+      // Delete session from database (revokes the token)
+      await this.sessionModel.deleteByToken(token);
+      
+      // Clear HTTP-only cookie if used
+      res.clearCookie('token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
+      });
+      
+      res.json({
+        success: true,
+        message: 'Logged out successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+  
+  async me(req, res, next) {
+    try {
+      const user = req.user;
+      
+      res.json({
+        success: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          full_name: user.full_name,
+          timezone: user.timezone,
+          preferences: user.preferences ? JSON.parse(user.preferences) : {}
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+  
+  async register(req, res, next) {
+    try {
+      const { username, email, password, full_name } = req.body;
+      
+      // Validation
+      if (!username || !email || !password) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username, email, and password are required'
+        });
+      }
+      
+      // Check if user exists
+      const existingUser = await this.userModel.findByUsername(username);
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: 'Username already exists'
+        });
+      }
+      
+      const existingEmail = await this.userModel.findByEmail(email);
+      if (existingEmail) {
+        return res.status(409).json({
+          success: false,
+          message: 'Email already exists'
+        });
+      }
+      
+      // Hash password
+      const password_hash = await bcrypt.hash(password, 12);
+      
+      // Create user
+      const user = await this.userModel.create({
+        username,
+        email,
+        password_hash,
+        full_name: full_name || username
+      });
+      
+      res.status(201).json({
+        success: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          full_name: user.full_name
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+Session Model
+javascript// src/models/Session.js
+import { BaseModel } from './BaseModel.js';
+
+export class SessionModel extends BaseModel {
+  constructor() {
+    super('sessions');
+  }
+  
+  async findByToken(token) {
+    const query = `
+      SELECT s.*, u.id as user_id, u.username, u.email, u.full_name, u.timezone, u.preferences
+      FROM sessions s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.token = ? AND s.expires_at > datetime('now')
+    `;
+    
+    const session = await this.db.get(query, [token]);
+    
+    if (session) {
+      // Explicit token expiry validation
+      if (new Date(session.expires_at) <= new Date()) {
+        await this.deleteByToken(token);
+        return null;
+      }
+      
+      // Update last_used_at
+      await this.db.run(
+        'UPDATE sessions SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?',
+        [token]
+      );
+    }
+    
+    return session;
+  }
+  
+  async deleteByToken(token) {
+    return await this.db.run('DELETE FROM sessions WHERE token = ?', [token]);
+  }
+  
+  async cleanupUserSessions(userId, keepCount = 5) {
+    // Keep only the most recent sessions for a user
+    const query = `
+      DELETE FROM sessions 
+      WHERE user_id = ? 
+      AND id NOT IN (
+        SELECT id FROM sessions 
+        WHERE user_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT ?
+      )
+    `;
+    
+    return await this.db.run(query, [userId, userId, keepCount]);
+  }
+  
+  async cleanupExpiredSessions() {
+    return await this.db.run(
+      'DELETE FROM sessions WHERE expires_at < datetime("now")'
+    );
+  }
+  
+  async getUserSessions(userId) {
+    const query = `
+      SELECT id, token, expires_at, created_at, last_used_at, user_agent, ip_address
+      FROM sessions 
+      WHERE user_id = ? AND expires_at > datetime('now')
+      ORDER BY last_used_at DESC
+    `;
+    
+    return await this.db.all(query, [userId]);
+  }
+}
+Authentication Middleware
+javascript// src/middleware/auth.js
+import { SessionModel } from '../models/Session.js';
+
+const sessionModel = new SessionModel();
+
+export async function authMiddleware(req, res, next) {
+  try {
+    let token;
+    
+    // Extract token from Authorization header or secure HTTP-only cookie
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    } else if (req.cookies && req.cookies.token) {
+      token = req.cookies.token; // Extract from HTTP-only cookie
+    }
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token required'
+      });
+    }
+    
+    // Find session with user data and validate expiry
+    const session = await sessionModel.findByToken(token);
+    
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+    
+    // Attach user and token to request
+    req.user = {
+      id: session.user_id,
+      username: session.username,
+      email: session.email,
+      full_name: session.full_name,
+      timezone: session.timezone,
+      preferences: session.preferences
+    };
+    req.token = token;
+    
+    next();
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Authentication error'
+    });
+  }
+}
+
+export function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+  
+  // Use the main auth middleware but don't fail on error
+  authMiddleware(req, res, (err) => {
+    if (err) {
+      // Clear user if auth fails but continue
+      req.user = null;
+    }
+    next();
+  });
 }
 Project Controller
 javascript// src/controllers/projectController.js
@@ -1614,7 +1966,6 @@ export class TaskModel extends BaseModel {
     return await this.db.all(query, [userId, startDate, endDate]);
   }
 }
-
 Development Setup
 Project Structure
 project-flow/
@@ -1635,6 +1986,7 @@ project-flow/
 │   ├── models/
 │   │   ├── BaseModel.js
 │   │   ├── User.js
+│   │   ├── Session.js
 │   │   ├── Project.js
 │   │   ├── Task.js
 │   │   └── TimeLog.js
@@ -1653,8 +2005,9 @@ project-flow/
 │   │   └── helpers.js
 │   └── migrations/
 │       ├── 001_initial_schema.sql
-│       ├── 002_add_time_logs.sql
-│       └── 003_add_milestones.sql
+│       ├── 002_add_sessions.sql
+│       ├── 003_add_time_logs.sql
+│       └── 004_add_milestones.sql
 ├── public/
 │   ├── index.html
 │   ├── css/
@@ -1703,13 +2056,13 @@ json{
     "sqlite3": "^5.1.6",
     "sqlite": "^4.2.1",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.0",
     "cors": "^2.8.5",
     "helmet": "^7.0.0",
+    "cookie-parser": "^1.4.6",
     "rate-limiter-flexible": "^2.4.2",
     "multer": "^1.4.5",
-    "date-fns": "^2.30.0",
-    "uuid": "^9.0.0"
+    "date-fns": "^2.30.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
@@ -1728,8 +2081,7 @@ bash# .env.example
 NODE_ENV=development
 PORT=3000
 DB_PATH=./data/projectflow.db
-JWT_SECRET=your_super_secret_jwt_key_here
-JWT_EXPIRES_IN=7d
+SESSION_EXPIRES_DAYS=7
 LOG_LEVEL=info
 BACKUP_INTERVAL=24h
 Installation Steps
@@ -1739,7 +2091,7 @@ Clone and Setup
 bashmkdir project-flow
 cd project-flow
 npm init -y
-npm install express sqlite3 sqlite bcryptjs jsonwebtoken cors helmet
+npm install express sqlite3 sqlite bcryptjs uuid cors helmet cookie-parser
 npm install -D nodemon vite jest eslint prettier
 
 Database Setup
@@ -1763,6 +2115,19 @@ CREATE TABLE users (
   preferences TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Sessions table
+CREATE TABLE sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token VARCHAR(255) UNIQUE NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  user_agent TEXT,
+  ip_address VARCHAR(45),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Projects table
@@ -1810,14 +2175,17 @@ CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_due_date ON tasks(due_date);
 CREATE INDEX idx_projects_user_id ON projects(user_id);
 CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_sessions_token ON sessions(token);
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
 Start Development
 
 bashnpm run dev
-
 Feature Specifications
 Core Features Implementation
 1. Dashboard
+
 Purpose: Provide an overview of user's projects and tasks
 Components:
 
@@ -1826,9 +2194,12 @@ Recent project progress
 Upcoming deadlines
 Recent activity feed
 
+
 Implementation Priority: High
 Estimated Time: 2-3 days
+
 2. Kanban Board
+
 Purpose: Visual task management with drag-and-drop functionality
 Components:
 
@@ -1837,15 +2208,19 @@ Draggable task cards
 Add task functionality
 Project filtering
 
+
 Technical Requirements:
 
 HTML5 Drag and Drop API
 Position tracking for tasks
 Real-time status updates
 
+
 Implementation Priority: High
 Estimated Time: 3-4 days
+
 3. Project Management
+
 Purpose: Create, edit, and track projects
 Components:
 
@@ -1854,9 +2229,12 @@ Project creation form
 Progress tracking
 Status management
 
+
 Implementation Priority: High
 Estimated Time: 2-3 days
+
 4. Task Management
+
 Purpose: Detailed task operations
 Components:
 
@@ -1865,9 +2243,12 @@ Task creation/editing
 Priority and status management
 Due date tracking
 
+
 Implementation Priority: High
 Estimated Time: 2-3 days
+
 5. Analytics
+
 Purpose: Productivity insights and reporting
 Components:
 
@@ -1876,15 +2257,19 @@ Time allocation analysis
 Project progress charts
 Performance insights
 
+
 Technical Requirements:
 
 Chart.js integration
 Data aggregation queries
 Export functionality
 
+
 Implementation Priority: Medium
 Estimated Time: 3-4 days
+
 6. Calendar View
+
 Purpose: Timeline and deadline management
 Components:
 
@@ -1892,9 +2277,12 @@ Monthly calendar view
 Event/deadline display
 Quick task creation
 
+
 Implementation Priority: Medium
 Estimated Time: 2-3 days
+
 7. Reports
+
 Purpose: Generate and export detailed reports
 Components:
 
@@ -1902,13 +2290,15 @@ Pre-defined report templates
 Custom report builder
 Export functionality (PDF, CSV)
 
+
 Implementation Priority: Low
 Estimated Time: 3-4 days
+
 Development Phases
 Phase 1: Core Backend (Week 1-2)
 
 Database setup and migrations
-Authentication system
+Authentication system with opaque tokens
 Basic CRUD operations for projects and tasks
 API endpoints implementation
 
@@ -1939,7 +2329,6 @@ Performance optimization
 Error handling improvement
 Testing and bug fixes
 Documentation completion
-
 
 Deployment Guide
 Local Development Setup
@@ -2074,6 +2463,32 @@ export class BackupManager {
   }
 }
 Security Considerations
+Opaque Token Benefits
+Opaque tokens stored in the database are revocable and inherently safer than JWTs for local-first applications, as they can be instantly invalidated and don't carry sensitive data in the token itself.
+Session Security
+javascript// src/utils/sessionSecurity.js
+import crypto from 'crypto';
+
+export class SessionSecurity {
+  static generateSecureToken() {
+    // Generate cryptographically secure random token
+    return crypto.randomBytes(32).toString('hex');
+  }
+  
+  static hashToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+  
+  static isExpired(expiresAt) {
+    return new Date(expiresAt) < new Date();
+  }
+  
+  static calculateExpiry(days = 7) {
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + days);
+    return expiry;
+  }
+}
 Input Validation
 javascript// src/middleware/validation.js
 import { body, validationResult } from 'express-validator';
@@ -2133,7 +2548,6 @@ export async function rateLimitMiddleware(req, res, next) {
     });
   }
 }
-
 Performance Considerations
 Database Optimization
 Indexing Strategy
@@ -2142,6 +2556,7 @@ CREATE INDEX idx_tasks_project_status ON tasks(project_id, status);
 CREATE INDEX idx_tasks_user_due_date ON tasks(user_id, due_date);
 CREATE INDEX idx_projects_user_status ON projects(user_id, status);
 CREATE INDEX idx_time_logs_user_date ON time_logs(user_id, logged_date);
+CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 Query Optimization
 javascript// Efficient project loading with task counts
 async findProjectsWithTaskCounts(userId) {
@@ -2158,6 +2573,22 @@ async findProjectsWithTaskCounts(userId) {
   `;
   
   return await this.db.all(query, [userId]);
+}
+Session Cleanup
+javascript// Periodic session cleanup
+export class SessionCleanup {
+  static startCleanupJob() {
+    // Run cleanup every hour
+    setInterval(async () => {
+      await this.cleanupExpiredSessions();
+    }, 60 * 60 * 1000);
+  }
+  
+  static async cleanupExpiredSessions() {
+    const sessionModel = new SessionModel();
+    await sessionModel.cleanupExpiredSessions();
+    console.log('Expired sessions cleaned up');
+  }
 }
 Frontend Optimization
 Lazy Loading
@@ -2250,12 +2681,12 @@ export async function getCachedUserProjects(userId) {
   
   return projects;
 }
-
-This comprehensive documentation provides everything needed to develop a minimal, monochrome project management tool for local hosting. The design emphasizes simplicity, performance, and functionality while maintaining a clean, professional appearance.
+This comprehensive documentation provides everything needed to develop a minimal, monochrome project management tool for local hosting with opaque token-based authentication. The design emphasizes simplicity, performance, and security while maintaining a clean, professional appearance.
 Key implementation notes:
 
-Start with Phase 1 (Core Backend) to establish the foundation
+Start with Phase 1 (Core Backend) to establish the foundation with secure session management
 Use the provided color palette and component styles for consistency
 Implement the Kanban board early as it's a key differentiator
 Focus on performance from the beginning with proper indexing and caching
 Maintain the minimal design philosophy throughout development
+Ensure proper session cleanup and security practices are followed
